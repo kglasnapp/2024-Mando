@@ -1,14 +1,16 @@
 package frc.robot.subsystems;
 
+import static frc.robot.Robot.joysticks;
 import static frc.robot.utilities.Util.clip;
 import static frc.robot.utilities.Util.logf;
 import static frc.robot.utilities.Util.round2;
 
 //import com.ctre.phoenix.motorcontrol.FeedbackDevice;
- 
+
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.DifferentialDriveOdometry;
+import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Config.RobotType;
@@ -18,6 +20,7 @@ public class Drivetrain extends SubsystemBase {
 
     private MotorSpark rightMotor;
     private MotorSpark leftMotor;
+    private DifferentialDrive differentialDrive;
 
     private double rightSpeed = 0;
     private double leftSpeed = 0;
@@ -37,7 +40,7 @@ public class Drivetrain extends SubsystemBase {
     private double intercept = .0; // Offset of the ramp
     private double deadZone = 0.04;
     private boolean turboMode = false;
-    private double sensitivity =0.6;
+    private double sensitivity = 0.6;
 
     public DifferentialDriveOdometry odometry;
     Pose2d pose;
@@ -74,6 +77,8 @@ public class Drivetrain extends SubsystemBase {
         // FeedbackDevice.CTRE_MagEncoder_Relative); // set pid for SRX
         rightMotor.setRampOpenLoop(rampTime);
         leftMotor.setRampOpenLoop(rampTime);
+
+        differentialDrive = new DifferentialDrive(leftMotor::setSpeed, rightMotor::setSpeed);
     }
 
     public void setAggresiveMode() {
@@ -161,39 +166,42 @@ public class Drivetrain extends SubsystemBase {
             targetAngle = null;
         }
         if (Robot.driveArcade) {
-            arcadeMode();
-            return;
-        }
-        
+            leftJoy = Joysticks.operator.getRawAxis(1) * sensitivity;
+            rightJoy = targetAngle != null ? clip(-driveStraight(), -1, 1) : Joysticks.operator.getRawAxis(4); // * sensitivity;
 
-        rightJoy = Robot.oi.rightJoySpeed();
-        leftJoy = Robot.oi.leftJoySpeed();
+            differentialDrive.curvatureDrive(leftJoy * -1, rightJoy, false);
+        } else {
+            leftJoy = Joysticks.operator.getRawAxis(1) * sensitivity;
+            rightJoy = targetAngle != null ? clip(-driveStraight(), -1, 1) : Joysticks.operator.getRawAxis(5) * sensitivity;
 
-        if (targetAngle != null) {
-            // If Drive straight active make adjustments
-            driveStraight();
+            differentialDrive.tankDrive(leftJoy * -1, rightJoy, true);
         }
 
-        rightJoy *= sensitivity;
-        leftJoy *= sensitivity;
+        // if (targetAngle != null) {
+        //     // If Drive straight active make adjustments
+        //     driveStraight();
+        // }
 
-        // Adjust the ramp rate to make it easier to drive
-        // Ramping will also put less strain on the motors
-        rightJoy = ramp(rightJoy, rightSpeed, "Right");
-        leftJoy = ramp(leftJoy, leftSpeed, "Left");
+        // rightJoy *= sensitivity;
+        // leftJoy *= sensitivity;
 
-        showDriveLog = Math.abs(rightJoy) > .06 || Math.abs(leftJoy) > .06;
-        if (showDriveLog && Robot.count % 100 == 0) {
-            logf("Pos L:%d R:%d Joy L:%.2f R:%.2f\n", leftMotor.getPos(), rightMotor.getPos(), leftJoy,
-                    rightJoy);
-        }
-        leftJoy = correctForDeadZone(leftJoy);
-        rightJoy = correctForDeadZone(rightJoy);
-        setLeftMotor(leftJoy);
-        setRightMotor(rightJoy);
+        // // Adjust the ramp rate to make it easier to drive
+        // // Ramping will also put less strain on the motors
+        // rightJoy = ramp(rightJoy, rightSpeed, "Right");
+        // leftJoy = ramp(leftJoy, leftSpeed, "Left");
+
+        // showDriveLog = Math.abs(rightJoy) > .06 || Math.abs(leftJoy) > .06;
+        // if (showDriveLog && Robot.count % 100 == 0) {
+        //     logf("Pos L:%d R:%d Joy L:%.2f R:%.2f\n", leftMotor.getPos(), rightMotor.getPos(), leftJoy,
+        //             rightJoy);
+        // }
+        // leftJoy = correctForDeadZone(leftJoy);
+        // rightJoy = correctForDeadZone(rightJoy);
+        // setLeftMotor(leftJoy);
+        // setRightMotor(rightJoy);
     }
 
-    void driveStraight() {
+    double driveStraight() {
         double error = Robot.yaw - targetAngle;
         if (error > 10) {
             logf("!!!!! Drive Straight error too positive diff:%.1f yaw:%.1f target:%.3f\n", error,
@@ -216,13 +224,15 @@ public class Drivetrain extends SubsystemBase {
         // }
         double factor = error * Math.abs(averageJoy) * 0.035; // Was 0.045
         // Log drive straight data every 2.5 seconds
-        if (Robot.count % 12 == 0) {
-            logf("Drive Straight targ:%.2f yaw:%.2f err:%.2f avg:%.2f factor:%.2f Fr Dist:%.2f Joy:<%.2f,%.2f>\n",
-                    targetAngle, yaw, error,
-                    averageJoy, factor, Robot.frontDistance, rightJoy, leftJoy);
-        }
-        leftJoy = averageJoy - factor;
-        rightJoy = averageJoy + factor;
+        // if (Robot.count % 12 == 0) {
+        //     logf("Drive Straight targ:%.2f yaw:%.2f err:%.2f avg:%.2f factor:%.2f Fr Dist:%.2f Joy:<%.2f,%.2f>\n",
+        //             targetAngle, yaw, error,
+        //             averageJoy, factor, Robot.frontDistance, rightJoy, leftJoy);
+        // }
+        // leftJoy = averageJoy - factor;
+        // rightJoy = averageJoy + factor;
+
+        return factor;
     }
 
     double rampCubed(double joy, double speed, String side) {
@@ -352,11 +362,11 @@ public class Drivetrain extends SubsystemBase {
 
     private void arcadeMode() {
         double yValue = Joysticks.operator.getRawAxis(1) * -1;
-        double xValue = Joysticks.operator.getRawAxis(4) * -1;
+        double xValue = Joysticks.operator.getRawAxis(4) * 1;
 
         yValue = correctForDeadZone(yValue);
         xValue = correctForDeadZone(xValue);
-        
+
         yValue *= sensitivity;
         xValue *= sensitivity;
 
